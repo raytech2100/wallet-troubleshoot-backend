@@ -1,37 +1,22 @@
 // server.js
 // Simple Express backend that receives wallet troubleshoot submissions
-// and emails them via Gmail SMTP using Nodemailer.
+// and emails them via the Resend API (HTTPS, not blocked by free-tier hosts
+// the way raw SMTP ports are).
 //
 // SETUP:
-// 1. npm install express nodemailer cors dotenv
-// 2. Create a Gmail "App Password" (NOT your normal Gmail password):
-//    - Go to https://myaccount.google.com/apppasswords
-//    - Requires 2-Step Verification to be enabled on the Google account
-//    - Generate an app password for "Mail" / "Other (Custom name)"
-//    - Copy the 16-character password it gives you
-// 3. Create a .env file next to this server.js with:
-//      GMAIL_USER=jusierose3@gmail.com
-//      GMAIL_APP_PASSWORD=your16charapppassword
-// 4. Run: node server.js
-// 5. Update the frontend fetch URL to point at this server, e.g.
-//      http://localhost:3001/send-troubleshoot
+// 1. npm install express cors dotenv
+// 2. Sign up free at https://resend.com
+// 3. Get your API key from the Resend dashboard
+// 4. Add RESEND_API_KEY as an environment variable in Render
+// 5. Add RECEIVING_EMAIL as an environment variable too (jusierose3@gmail.com)
 
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_APP_PASSWORD
-  }
-});
 
 app.post('/send-troubleshoot', async (req, res) => {
   const { wallet, network, publicAddress, message } = req.body;
@@ -52,12 +37,25 @@ ${message}
   `.trim();
 
   try {
-    await transporter.sendMail({
-      from: process.env.GMAIL_USER,
-      to: process.env.GMAIL_USER,
-      subject: `Wallet Troubleshoot: ${wallet || 'Unknown wallet'}`,
-      text: emailBody
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: 'Wallet Troubleshoot <onboarding@resend.dev>',
+        to: [process.env.RECEIVING_EMAIL],
+        subject: `Wallet Troubleshoot: ${wallet || 'Unknown wallet'}`,
+        text: emailBody
+      })
     });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('Resend error:', errText);
+      return res.status(500).json({ error: 'Failed to send email' });
+    }
 
     res.json({ success: true });
   } catch (err) {
