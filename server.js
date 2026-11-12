@@ -18,6 +18,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ---- log which page each request came from ----
+app.use((req, res, next) => {
+  if (req.method === 'POST') {
+    console.log('From page:', req.get('Referer') || req.get('Origin') || 'unknown');
+  }
+  next();
+});
+// ---- end ----
+
 app.post('/send-troubleshoot', async (req, res) => {
   const { wallet, network, publicAddress, message } = req.body;
 
